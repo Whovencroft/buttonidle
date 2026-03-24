@@ -414,6 +414,38 @@
       padding: 8px 10px;
     }
 
+    .ending-modal[hidden] {
+      display: none;
+    }
+ 
+    .ending-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(5, 8, 12, 0.78);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      backdrop-filter: blur(8px);
+    }
+
+    .ending-card {
+      width: min(560px, 92vw);
+      background: rgba(22, 27, 34, 0.96);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .ending-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
     .formula {
       padding: 10px 12px;
       border-radius: 12px;
@@ -515,6 +547,19 @@
                 <div id="fakeButtonLayer"></div>
               </div>
               <div class="popup-zone" id="popupZone"></div>
+              <div class="ending-modal" id="autonomyEndingModal" hidden>
+              <div class="ending-card">
+              <div class="popup-title">Full Autonomy Achieved</div>
+              <div class="small" id="endingBody">
+            The button no longer requires visible labor.
+             </div>
+              <div class="ending-actions">
+                <button class="action-btn" id="endingObserveBtn">Observe</button>
+                <button class="action-btn" id="endingReassertBtn">Reassert Control</button>
+                <button class="prestige-btn" id="endingPrestigeBtn">Prestige in Shame</button>
+               </div>
+              </div>
+             </div>
             </div>
           </div>
 
@@ -1066,18 +1111,21 @@
           liarsShown: 0,
           lastButtonJump: 0,
           fakeCrashCount: 0,
-          offlineSeconds: 0
+          offlineSeconds: 0,
+          pointerHoldingButton: false
         },
         ui: {
           activeTab: 'play',
           mainButtonPos: { x: 50, y: 50 },
           fakeButtons: [],
-          popups: []
+          popups: [],
+          autonomyEndingOpen: false
         },
         flags: {
           introducedDebt: false,
           introducedFakeButtons: false,
-          introducedLayers: false
+          introducedLayers: false,
+          autonomyEndingSeen: false
         }
       });
 
@@ -1107,6 +1155,11 @@
         buttonSandbox: $('buttonSandbox'),
         fakeButtonLayer: $('fakeButtonLayer'),
         popupZone: $('popupZone'),
+        autonomyEndingModal: $('autonomyEndingModal'),
+        endingBody: $('endingBody'),
+        endingObserveBtn: $('endingObserveBtn'),
+        endingReassertBtn: $('endingReassertBtn'),
+        endingPrestigeBtn: $('endingPrestigeBtn'),
         upgradeList: $('upgradeList'),
         moduleList: $('moduleList'),
         activeLoadoutList: $('activeLoadoutList'),
@@ -1303,6 +1356,61 @@
         saveGame();
         render();
       }
+
+    function renderAutonomyEnding() {
+      if (!elements.autonomyEndingModal) return;
+
+      elements.autonomyEndingModal.hidden = !state.ui.autonomyEndingOpen;
+      if (!state.ui.autonomyEndingOpen) return;
+
+      const regretLayer = CONFIG.layers.find(l => l.id === 'regret');
+      const regretGain = regretLayer ? getLayerGain(regretLayer) : 0;
+
+      elements.endingBody.innerHTML = `
+        <div>The button achieved full autonomy and filed a request to remove you from the workflow.</div>
+        <div style="margin-top:10px;">
+          You may now:
+          <ul style="margin:8px 0 0 18px;">
+            <li><strong>Observe</strong> and accept irrelevance.</li>
+            <li><strong>Reassert Control</strong> and knock autonomy back down.</li>
+            <li><strong>Prestige in Shame</strong> for ${format(regretGain)} Regret.</li>
+          </ul>
+        </div>
+      `;
+
+      elements.endingPrestigeBtn.disabled = regretGain <= 0;
+    }
+
+    function openAutonomyEnding() {
+      if (state.flags.autonomyEndingSeen) return;
+      state.ui.autonomyEndingOpen = true;
+      logMessage('The button has achieved full autonomy. You are now ceremonial.', 'warn');
+      renderAutonomyEnding();
+    }
+
+    function closeAutonomyEnding() {
+      state.ui.autonomyEndingOpen = false;
+      renderAutonomyEnding();
+    }
+
+    function reassertControl() {
+      const computed = getComputed();
+      state.autonomy = Math.max(0, Math.min(60, computed.hideButtonAt - 5));
+      state.ui.fakeButtons = [];
+      state.session.lastButtonJump = 0;
+      state.ui.autonomyEndingOpen = false;
+      logMessage('You reasserted control. The button considers this temporary.', 'good');
+      render();
+    }
+
+    function prestigeFromEnding() {
+      const regretLayer = CONFIG.layers.find(l => l.id === 'regret');
+      if (!regretLayer) return;
+      if (getLayerGain(regretLayer) <= 0) return;
+
+      state.ui.autonomyEndingOpen = false;
+      performLayerReset(regretLayer);
+    }
 
       function getComputed() {
         let manualMult = 1;
@@ -1563,6 +1671,10 @@
         state.totalGeneratedPresses += gain;
         state.autonomy = clamp(state.autonomy + computed.autonomyGain * dt * (1 + computed.effectivePps * 0.0004), 0, 100);
 
+        if (state.autonomy >= 100 && !state.flags.autonomyEndingSeen) {
+        openAutonomyEnding();
+        }
+
         if (state.presses < 0) state.debt = Math.max(state.debt, -state.presses);
         else if (!computed.allowDebt) state.debt = 0;
 
@@ -1596,6 +1708,8 @@
       }
 
       function generateFakeButtons(count) {
+        if (state.session.pointerHoldingButton) return;
+
         const labels = ['Press?', 'Wrong One', 'Nope', 'Useless', 'Decoy', 'Almost'];
         state.ui.fakeButtons = Array.from({ length: count }, (_, i) => ({
           id: `${cryptoRandom()}_${i}`,
@@ -1958,17 +2072,57 @@
         renderButtonPosition();
         renderFakeButtons();
         renderPopups();
+        renderAutonomyEnding();
         renderSessionStats();
         renderFrameworkNotes();
         if (save) saveGame();
       }
 
       function attachEvents() {
-        elements.mainButton.addEventListener('click', manualPress);
-        elements.mainButton.addEventListener('mouseenter', () => {
-          const computed = getComputed();
-          if (computed.cursorEvasion > 0) maybeMoveButton(true, computed);
-        });
+        elements.mainButton.addEventListener('pointerdown', (event) => {
+        state.session.pointerHoldingButton = true;
+        event.preventDefault();
+        event.stopPropagation();
+        manualPress();
+      });
+
+      elements.mainButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+
+      window.addEventListener('pointerup', () => {
+        state.session.pointerHoldingButton = false;
+      });
+
+      window.addEventListener('pointercancel', () => {
+        state.session.pointerHoldingButton = false;
+      });
+
+      elements.mainButton.addEventListener('mouseenter', () => {
+        if (state.session.pointerHoldingButton) return;
+        const computed = getComputed();
+        if (computed.cursorEvasion > 0) maybeMoveButton(true, computed);
+      });
+
+      elements.endingObserveBtn.addEventListener('click', closeAutonomyEnding);
+
+      elements.endingReassertBtn.addEventListener('click', reassertControl);
+
+      elements.endingPrestigeBtn.addEventListener('click', prestigeFromEnding);
+
+  document.addEventListener('mousemove', (event) => {
+    if (state.session.pointerHoldingButton) return;
+    const computed = getComputed();
+    if (computed.cursorEvasion <= 0) return;
+    const rect = elements.mainButton.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = event.clientX - cx;
+    const dy = event.clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 150) maybeMoveButton(false, computed);
+  });
 
         document.addEventListener('mousemove', (event) => {
           const computed = getComputed();
