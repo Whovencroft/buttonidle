@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -1113,6 +1113,8 @@
           fakeCrashCount: 0,
           offlineSeconds: 0,
           pointerHoldingButton: false
+          autonomySuppressedUntil: 0,
+          autonomyEndingCooldownUntil: 0
         },
         ui: {
           activeTab: 'play',
@@ -1337,6 +1339,9 @@
           state.upgrades = Object.fromEntries(CONFIG.upgrades.map(u => [u.id, 0]));
           state.activeModules = [];
           state.ui.fakeButtons = [];
+          state.session.autonomySuppressedUntil = now() + 180000;
+          state.session.autonomyEndingCooldownUntil = now() + 180000;
+          state.ui.autonomyEndingOpen = false;
           logMessage(`You prestiged for ${format(gain)} Regret. Everything deserved this.`, 'warn');
         } else if (layer.id === 'meta_presses') {
           state.metaPresses += gain;
@@ -1382,24 +1387,26 @@
     }
 
     function openAutonomyEnding() {
-      if (state.flags.autonomyEndingSeen) return;
+      if (state.flags.autonomyEndingOpen) return;
       state.ui.autonomyEndingOpen = true;
       logMessage('The button has achieved full autonomy. You are now ceremonial.', 'warn');
       renderAutonomyEnding();
     }
 
     function closeAutonomyEnding() {
+      supressAutonomyFor(3600000, 85);
       state.ui.autonomyEndingOpen = false;
-      renderAutonomyEnding();
+      logMessage('You observed the autonomous system. It agreed to delay total independence briefly.'
+      render();
     }
 
     function reassertControl() {
       const computed = getComputed();
-      state.autonomy = Math.max(0, Math.min(60, computed.hideButtonAt - 5));
       state.ui.fakeButtons = [];
       state.session.lastButtonJump = 0;
+      suppressAutonomyFor(7200000, 60);
       state.ui.autonomyEndingOpen = false;
-      logMessage('You reasserted control. The button considers this temporary.', 'good');
+      logMessage('You have reasserted control. The button considers this tyrannical.', 'good');
       render();
     }
 
@@ -1410,6 +1417,13 @@
 
       state.ui.autonomyEndingOpen = false;
       performLayerReset(regretLayer);
+    }
+ 
+    function suppressAutonomyFor(ms = 15000, clampTo = 85) {
+      const until = now() + ms;
+      state.session.autonomySuppressedUntil = until;
+      state.session.autonomyEndingCooldownUntil = until;
+      state.autonomy = Math.min(state.autonomy, clampTo);
     }
 
       function getComputed() {
@@ -1428,6 +1442,7 @@
         let clickResetIdle = false;
         let hideButtonAt = 100;
 
+        const autonomySuppressed = now() < (state.session.autonomySuppressedUntil || 0);
         const activeModules = state.activeModules.map(getModuleById).filter(Boolean);
         for (const mod of activeModules) {
           const fx = mod.effects || {};
@@ -1458,6 +1473,13 @@
           if (fx.hideButtonAt) hideButtonAt = Math.min(hideButtonAt, fx.hideButtonAt);
         }
 
+          if (autonomySuppressed) {
+            autonomyGain = 0;
+            cursorEvasion = 0;
+            fakeButtons = 0;
+            hideButtonAt = Infinity;
+          }
+        
         const metaBoost = 1 + state.metaPresses * 0.08;
         const hyperBoost = 1 + state.hyperPresses * 0.12;
         const regretBoost = 1 + state.regret * 0.04;
@@ -1671,8 +1693,14 @@
         state.totalGeneratedPresses += gain;
         state.autonomy = clamp(state.autonomy + computed.autonomyGain * dt * (1 + computed.effectivePps * 0.0004), 0, 100);
 
-        if (state.autonomy >= 100 && !state.flags.autonomyEndingSeen) {
-        openAutonomyEnding();
+        const endingCooldownActive = current < (state.session.autonomyEndingCooldownUntil || 0);
+
+        if (
+          state.autonomy >= 100 &&
+          !state.ui.autonomyEndingOpen &&
+          !endingCooldownActive
+        ) {
+            openAutonomyEnding();
         }
 
         if (state.presses < 0) state.debt = Math.max(state.debt, -state.presses);
@@ -1721,6 +1749,8 @@
       }
 
       function maybeMoveButton(force = false, computed = getComputed()) {
+        if (state.session.pointerHoldingButton) return;
+        
         const current = now();
         if (!force && current - state.session.lastButtonJump < 300) return;
         const pressure = computed.cursorEvasion + state.autonomy / 35;
@@ -2111,30 +2141,20 @@
 
       elements.endingPrestigeBtn.addEventListener('click', prestigeFromEnding);
 
-  document.addEventListener('mousemove', (event) => {
-    if (state.session.pointerHoldingButton) return;
-    const computed = getComputed();
-    if (computed.cursorEvasion <= 0) return;
-    const rect = elements.mainButton.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = event.clientX - cx;
-    const dy = event.clientY - cy;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 150) maybeMoveButton(false, computed);
-  });
+      document.addEventListener('mousemove', (event) => {
+        if (state.session.pointerHoldingButton) return;
+        const computed = getComputed();
+        if (computed.cursorEvasion <= 0) return;
+        const rect = elements.mainButton.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = event.clientX - cx;
+        const dy = event.clientY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 150) maybeMoveButton(false, computed);
+      });
 
-        document.addEventListener('mousemove', (event) => {
-          const computed = getComputed();
-          if (computed.cursorEvasion <= 0) return;
-          const rect = elements.mainButton.getBoundingClientRect();
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          const dx = event.clientX - cx;
-          const dy = event.clientY - cy;
-          const dist = Math.hypot(dx, dy);
-          if (dist < 150) maybeMoveButton(false, computed);
-        });
+      
 
         $('saveBtn').addEventListener('click', () => saveGame(true));
         $('exportBtn').addEventListener('click', exportSave);
