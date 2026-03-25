@@ -1112,7 +1112,7 @@
           lastButtonJump: 0,
           fakeCrashCount: 0,
           offlineSeconds: 0,
-          pointerHoldingButton: false
+          pointerHoldingButton: false,
           autonomySuppressedUntil: 0,
           autonomyEndingCooldownUntil: 0
         },
@@ -1387,21 +1387,20 @@
     }
 
     function openAutonomyEnding() {
-      if (state.flags.autonomyEndingOpen) return;
+      if (state.ui.autonomyEndingOpen) return;
       state.ui.autonomyEndingOpen = true;
       logMessage('The button has achieved full autonomy. You are now ceremonial.', 'warn');
       renderAutonomyEnding();
     }
 
     function closeAutonomyEnding() {
-      supressAutonomyFor(3600000, 85);
+      suppressAutonomyFor(3600000, 85);
       state.ui.autonomyEndingOpen = false;
-      logMessage('You observed the autonomous system. It agreed to delay total independence briefly.'
+      logMessage('You observed the autonomous system. It agreed to delay total independence briefly.', 'warn');
       render();
     }
 
     function reassertControl() {
-      const computed = getComputed();
       state.ui.fakeButtons = [];
       state.session.lastButtonJump = 0;
       suppressAutonomyFor(7200000, 60);
