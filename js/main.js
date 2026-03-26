@@ -414,10 +414,10 @@
 
      elements.larcenyValue.textContent = `Larceny ${format(state.larceny)}`;
      elements.dumbDownDesc.textContent =
-       `Strip away about ${format(autonomyLoss)}% autonomy for ${format(cost)} presses. Each theft permanently increases manual click gain and autonomy growth.`;
+       `Strip away about ${format(autonomyLoss)}% autonomy for ${format(cost)} presses. Each theft permanently increases manual click gain and autonomy growth, but enrages the system.`;
 
      elements.dumbDownFormula.textContent =
-       `Cost ${format(cost)} • reward: +20% manual click power and +0.005/s autonomy growth per Larceny`;
+       `Cost ${format(cost)} • reward: +20% manual click power, +0.005/s autonomy growth, and -5% automation per Larceny`;
 
      elements.dumbDownBtn.disabled = !canAfford(cost) || state.autonomy <= 0;
     }
