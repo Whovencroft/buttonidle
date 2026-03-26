@@ -266,6 +266,7 @@
           state.upgrades = Object.fromEntries(CONFIG.upgrades.map(u => [u.id, 0]));
           state.activeModules = [];
           state.ui.fakeButtons = [];
+          state.ui.mainButtonPos = { x: 50, y: 50 };
           state.session.autonomySuppressedUntil = now() + 180000;
           state.session.autonomyEndingCooldownUntil = now() + 180000;
           state.ui.autonomyEndingOpen = false;
