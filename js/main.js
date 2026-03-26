@@ -1034,6 +1034,7 @@
           debtComboMult: (v) => `Debt combo x${format(v)}`,
           cursorEvasion: () => 'Button dodges',
           fakeButtons: (v) => `${v} fake buttons`,
+          fakeCrashRate: (v) => `Crash chance ${format(v, 3)}/s`,
           idleEnabled: () => 'Idle rewards',
           idleScale: (v) => `Idle scale ${format(v)}`,
           clickResetIdle: () => 'Clicks reset idle',
