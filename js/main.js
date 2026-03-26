@@ -568,6 +568,14 @@
         const active = state.activeModules.includes(id);
         if (active) {
           state.activeModules = state.activeModules.filter(m => m !== id);
+
+          if (id === 'user_repellant') {
+            state.ui.mainButtonPos = { x: 50, y: 50 };
+            state.ui.fakeButtons = [];
+            state.ui.popups = [];
+            state.session.lastButtonJump = 0;
+          }
+
           logMessage(`Deactivated ${mod.name}. A rare act of restraint.`, 'warn');
           saveGame();
           render();
