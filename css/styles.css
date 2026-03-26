@@ -94,7 +94,7 @@
     }
 
     .tab-btn:hover, .mini-btn:hover, .action-btn:hover, .card button:hover, .module-toggle:hover, .prestige-btn:hover, .popup button:hover {
-      transform: translateY(-1px);
+  
       border-color: var(--accent);
     }
 
