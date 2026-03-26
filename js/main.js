@@ -1037,8 +1037,6 @@
       function renderLive() {
         renderTopStats();
         renderButtonPosition();
-        renderFakeButtons();
-        renderPopups();
         renderAutonomyEnding();
       }
       
