@@ -652,7 +652,7 @@
 
         if (current - lastUiRender >= 125) {
           lastUiRender = current;
-          render(false);
+          renderLive();
         }
       }
 
@@ -1034,6 +1034,14 @@
         if (save) saveGame();
       }
 
+      function renderLive() {
+        renderTopStats();
+        renderButtonPosition();
+        renderFakeButtons();
+        renderPopups();
+        renderAutonomyEnding();
+      }
+      
       function attachEvents() {
         elements.mainButton.addEventListener('pointerdown', (event) => {
         state.session.pointerHoldingButton = true;
