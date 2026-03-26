@@ -485,6 +485,7 @@
         const inflation = Math.max(1, (1 + automationOwned * 0.02 + state.regret * 0.003) * Math.max(0.5, 1 - state.hyperPresses * 0.01));
         const larcenyManualBoost = 1 + state.larceny * 0.2;
         const larcenyAutonomyBoost = state.larceny * 0.005;
+        const larcenyAutonomyRegret = Math.pow(0.95, state.larceny);
         autonomyGain += larcenyAutonomyBoost;
         let basePps = 0;
         for (const upgrade of CONFIG.upgrades) {
@@ -504,7 +505,7 @@
         regretBoost *
         larcenyManualBoost;
 
-        const effectivePps = basePps * efficiency * autonomyFactor;
+        const effectivePps = basePps * efficiency * autonomyFactor * larcenyAutonomyRegret;
 
         return {
           activeModules,
