@@ -87,7 +87,6 @@
         mainButton: $('mainButton'),
         buttonSandbox: $('buttonSandbox'),
         fakeButtonLayer: $('fakeButtonLayer'),
-        fakeCrashRate: (v) => `Crash chance ${format(v, 3)}/s`,
         popupZone: $('popupZone'),
         autonomyEndingModal: $('autonomyEndingModal'),
         endingBody: $('endingBody'),
@@ -591,7 +590,7 @@
 
         state.activeModules.push(id);
         if (id === 'debt_spiral') state.flags.introducedDebt = true;
-        if (id === 'user_repellent') state.flags.introducedFakeButtons = true;
+        if (id === 'user_repellant') state.flags.introducedFakeButtons = true;
         logMessage(`Activated ${mod.name}. The system worsens itself productively.`, 'good');
         saveGame();
         render();
@@ -966,7 +965,7 @@
           ['Regret', state.regret],
           ['Meta-Presses', state.metaPresses],
           ['Hyper-Presses', state.hyperPresses],
-          ['Press Derivatives', state.pressDerivatives]
+          ['Press Derivatives', state.pressDerivatives],
           ['Autonomy Theft', state.larceny]
         ].map(([name, val]) => `
           <div class="card">
@@ -1104,7 +1103,8 @@
           ? `Debt limit ${format(computed.debtLimit)} • boost x${format(computed.debtBoost)}`
           : 'Financially irresponsible mode locked';
         elements.regretValue.textContent = format(state.regret);
-        elements.layerSummary.textContent = `Meta ${format(state.metaPresses)} • Hyper ${format(state.hyperPresses)} • Derivatives ${format(state.pressDerivatives)}`;
+        elements.layerSummary.textContent =
+          `Meta ${format(state.metaPresses)} • Hyper ${format(state.hyperPresses)} • Derivatives ${format(state.pressDerivatives)} • Larceny ${format(state.larceny)}`;
         elements.activeRulesValue.textContent = `${state.activeModules.length} / ${CONFIG.meta.maxActiveModules}`;
         elements.comboSummary.textContent = computed.combos.length
           ? computed.combos.map(c => c.name).join(' • ')
@@ -1186,9 +1186,7 @@
         elements.dumbDownBtn.addEventListener('click', performDumbDown);
       }
 
-      elements.layerSummary.textContent =
-        `Meta ${format(state.metaPresses)} • Hyper ${format(state.hyperPresses)} • Derivatives ${format(state.pressDerivatives)} • Larceny ${format(state.larceny)}`;
-
+      
       document.addEventListener('mousemove', (event) => {
         if (state.session.pointerHoldingButton) return;
         const computed = getComputed();
