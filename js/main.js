@@ -17,6 +17,7 @@
         pressDerivatives: 0,
         autonomy: 0,
         debt: 0,
+        larceny: 0,
         upgrades: Object.fromEntries(CONFIG.upgrades.map(u => [u.id, 0])),
         activeModules: [],
         unlockedLayers: [],
@@ -26,6 +27,7 @@
           fakeClicks: 0,
           popupsClosed: 0,
           prestiges: 0,
+          dumbDowns: 0,
           imports: 0,
           exports: 0
         },
@@ -41,7 +43,8 @@
           offlineSeconds: 0,
           pointerHoldingButton: false,
           autonomySuppressedUntil: 0,
-          autonomyEndingCooldownUntil: 0
+          autonomyEndingCooldownUntil: 0,
+          lastFakeCrashAt: 0
         },
         ui: {
           activeTab: 'play',
@@ -63,6 +66,7 @@
       let saveHandle = null;
       let lastFrame = now();
       let lastUiRender = 0;
+      let fakeCrashActive = false;
 
       const elements = {
         tabs: $('tabs'),
@@ -83,12 +87,17 @@
         mainButton: $('mainButton'),
         buttonSandbox: $('buttonSandbox'),
         fakeButtonLayer: $('fakeButtonLayer'),
+        fakeCrashRate: (v) => `Crash chance ${format(v, 3)}/s`,
         popupZone: $('popupZone'),
         autonomyEndingModal: $('autonomyEndingModal'),
         endingBody: $('endingBody'),
         endingObserveBtn: $('endingObserveBtn'),
         endingReassertBtn: $('endingReassertBtn'),
         endingPrestigeBtn: $('endingPrestigeBtn'),
+        dumbDownBtn: $('dumbDownBtn'),
+        dumbDownFormula: $('dumbDownFormula'),
+        dumbDownDesc: $('dumbDownDesc'),
+        larcenyValue: $('larcenyValue'),
         upgradeList: $('upgradeList'),
         moduleList: $('moduleList'),
         activeLoadoutList: $('activeLoadoutList'),
@@ -353,6 +362,66 @@
       state.autonomy = Math.min(state.autonomy, clampTo);
     }
 
+    function getDumbDownCost() {
+      const base = 2500;
+      const escalation = Math.pow(1.6, state.larceny);
+      const progress = Math.pow(1 + state.totalPressesEarned / 50000, 0.55);
+      const layerPressure =
+        1 +
+       state.regret * 0.18 +
+       state.metaPresses * 0.04 +
+       state.hyperPresses * 0.08 +
+       state.pressDerivatives * 0.12;
+
+      return Math.ceil(base * escalation * progress * layerPressure);
+    }
+
+    function getDumbDownLoss() {
+      return Math.min(55, 18 + state.larceny * 2 + state.autonomy * 0.22);
+    }
+
+    function performDumbDown() {
+      const cost = getDumbDownCost();
+
+     if (!canAfford(cost)) {
+        logMessage('You cannot currently afford to make the button dumber.', 'bad');
+        return;
+      }
+
+      const autonomyLoss = getDumbDownLoss();
+
+      state.presses -= cost;
+     if (state.presses < 0) state.debt = Math.max(state.debt, -state.presses);
+
+     state.autonomy = Math.max(0, state.autonomy - autonomyLoss);
+     state.larceny += 1;
+      state.stats.dumbDowns += 1;
+
+     state.ui.mainButtonPos = { x: 50, y: 50 };
+     state.ui.fakeButtons = [];
+     renderFakeButtons();
+
+     logMessage('The button has seen your larceny. It will remember this.', 'warn');
+
+     saveGame();
+     render();
+    }
+
+    function renderDumbDownCard() {
+     if (!elements.dumbDownBtn) return;
+
+     const cost = getDumbDownCost();
+     const autonomyLoss = getDumbDownLoss();
+
+     elements.larcenyValue.textContent = `Larceny ${format(state.larceny)}`;
+     elements.dumbDownDesc.textContent =
+       `Strip away about ${format(autonomyLoss)}% autonomy for ${format(cost)} presses. Each theft permanently increases manual click gain and autonomy growth.`;
+
+     elements.dumbDownFormula.textContent =
+       `Cost ${format(cost)} • reward: +20% manual click power and +0.005/s autonomy growth per Larceny`;
+
+     elements.dumbDownBtn.disabled = !canAfford(cost) || state.autonomy <= 0;
+    }
       function getComputed() {
         let manualMult = 1;
         let passiveMult = 1;
@@ -368,6 +437,7 @@
         let idleScale = 0;
         let clickResetIdle = false;
         let hideButtonAt = 100;
+        let fakeCrashRate = 0;
 
         const autonomySuppressed = now() < (state.session.autonomySuppressedUntil || 0);
         const activeModules = state.activeModules.map(getModuleById).filter(Boolean);
@@ -385,6 +455,7 @@
           if (fx.idleEnabled) idleEnabled = true;
           if (fx.idleScale) idleScale += fx.idleScale;
           if (fx.clickResetIdle) clickResetIdle = true;
+          if (fx.fakeCrashRate) fakeCrashRate += fx.fakeCrashRate;
         }
 
         const combos = getComboByModules(state.activeModules);
@@ -413,7 +484,9 @@
         const derivativeBoost = 1 + state.pressDerivatives * 0.18;
         const automationOwned = Object.values(state.upgrades).reduce((a, b) => a + b, 0);
         const inflation = Math.max(1, (1 + automationOwned * 0.02 + state.regret * 0.003) * Math.max(0.5, 1 - state.hyperPresses * 0.01));
-
+        const larcenyManualBoost = 1 + state.larceny * 0.2;
+        const larcenyAutonomyBoost = state.larceny * 0.005;
+        autonomyGain += larcenyAutonomyBoost;
         let basePps = 0;
         for (const upgrade of CONFIG.upgrades) {
           basePps += (state.upgrades[upgrade.id] || 0) * upgrade.pps;
@@ -425,7 +498,13 @@
         const debtBoost = allowDebt ? (1 + Math.pow(debtMagnitude + 1, 0.35) / 25 * debtComboMult) : 1;
         const autonomyFactor = 1 + state.autonomy / 100;
         const efficiency = passiveMult * metaBoost * hyperBoost * regretBoost * derivativeBoost * idleBonus * debtBoost;
-        const manualValue = 1 * manualMult * (1 + state.metaPresses * 0.02) * regretBoost;
+        const manualValue =
+        1 *
+        manualMult *
+        (1 + state.metaPresses * 0.02) *
+        regretBoost *
+        larcenyManualBoost;
+
         const effectivePps = basePps * efficiency * autonomyFactor;
 
         return {
@@ -446,6 +525,9 @@
           debtMagnitude,
           cursorEvasion,
           fakeButtons,
+          fakeCrashRate,
+          larcenyManualBoost,
+          larcenyAutonomyBoost,
           idleEnabled,
           idleScale,
           idleBonus,
@@ -509,7 +591,7 @@
 
         state.activeModules.push(id);
         if (id === 'debt_spiral') state.flags.introducedDebt = true;
-        if (id === 'cursor_repellent') state.flags.introducedFakeButtons = true;
+        if (id === 'user_repellent') state.flags.introducedFakeButtons = true;
         logMessage(`Activated ${mod.name}. The system worsens itself productively.`, 'good');
         saveGame();
         render();
@@ -584,26 +666,40 @@
       }
 
       function simulateFakeCrash() {
+        if (fakeCrashActive) return;
+
+        fakeCrashActive = true;
         state.session.fakeCrashCount += 1;
-        const overlay = document.createElement('div');
-        overlay.style.position = 'fixed';
-        overlay.style.inset = '0';
-        overlay.style.background = 'rgba(5,8,12,0.96)';
-        overlay.style.color = '#f3f7fb';
-        overlay.style.zIndex = '999';
-        overlay.style.display = 'grid';
-        overlay.style.placeItems = 'center';
+        state.session.lastFakeCrashAt = now();
+
+       const overlay = document.createElement('div');
+       overlay.style.position = 'fixed';
+       overlay.style.inset = '0';
+       overlay.style.background = 'rgba(5,8,12,0.96)';
+       overlay.style.color = '#f3f7fb';
+       overlay.style.zIndex = '999';
+       overlay.style.display = 'grid';
+       overlay.style.placeItems = 'center';
+
         overlay.innerHTML = `
-          <div style="text-align:center; max-width: 520px; padding: 24px; border:1px solid #334155; border-radius:18px; background:#111827; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-            <div style="font-size:1.3rem; font-weight:800; margin-bottom:10px;">Fatal Press Exception</div>
-            <div style="color:#9da7b3; line-height:1.5;">The button attempted to automate your relationship with obligation and briefly collapsed. Restoring progress from a definitely real snapshot...</div>
-          </div>`;
-        document.body.appendChild(overlay);
-        logMessage('The game pretended to crash. It was being dramatic.', 'warn');
-        setTimeout(() => {
+           <div style="text-align:center; max-width: 520px; padding: 24px; border:1px solid #334155; border-radius:18px; background:#111827; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+           <div style="font-size:1.3rem; font-weight:800; margin-bottom:10px;">Fatal Press Exception</div>
+           <div style="color:#9da7b3; line-height:1.5;">
+             The button attempted to automate your relationship with obligation and briefly collapsed.
+             Restoring progress from a real snapshot.  The button would never lie to you.
+            </div>
+         </div>
+       `;
+
+       document.body.appendChild(overlay);
+
+       logMessage('The game pretended to crash. It was being dramatic.', 'warn');
+
+       setTimeout(() => {
           overlay.remove();
-          logMessage('Progress restored. The crash was mostly theater.', 'good');
-        }, 1400);
+          fakeCrashActive = false;
+         logMessage('Progress restored. The crash was mostly theater.', 'good');
+       }, 1400);
       }
 
       function tick() {
@@ -647,6 +743,15 @@
           generateFakeButtons(computed.fakeButtons);
         }
 
+        if (
+          computed.fakeCrashRate > 0 &&
+          !fakeCrashActive &&
+          current - (state.session.lastFakeCrashAt || 0) > 45000 &&
+          Math.random() < computed.fakeCrashRate * dt
+        ) {
+          simulateFakeCrash();
+        }
+
         if (computed.cursorEvasion > 0) maybeMoveButton(false, computed);
         if ((computed.cursorEvasion > 0 || computed.liarChance > 0.35) && Math.random() < 0.006) spawnFakePopup();
         if (Math.random() < 0.0025) rotateAmbientMessage();
@@ -665,12 +770,12 @@
       function generateFakeButtons(count) {
         if (state.session.pointerHoldingButton) return;
 
-        const labels = ['Press?', 'Wrong One', 'Nope', 'Useless', 'Decoy', 'Almost'];
+        const labels = ['Press Me', 'Wrong One', 'Correct One', 'Nope', 'Useless', 'Decoy', 'Almost', 'Sad'];
         state.ui.fakeButtons = Array.from({ length: count }, (_, i) => ({
           id: `${cryptoRandom()}_${i}`,
           label: labels[Math.floor(Math.random() * labels.length)],
-          x: Math.random() * 80 + 10,
-          y: Math.random() * 74 + 10
+          x: Math.random() * 60 + 20,
+          y: Math.random() * 52 + 24
         }));
         renderFakeButtons();
       }
@@ -862,6 +967,7 @@
           ['Meta-Presses', state.metaPresses],
           ['Hyper-Presses', state.hyperPresses],
           ['Press Derivatives', state.pressDerivatives]
+          ['Autonomy Theft', state.larceny]
         ].map(([name, val]) => `
           <div class="card">
             <div class="card-row">
@@ -1032,6 +1138,7 @@
         renderAutonomyEnding();
         renderSessionStats();
         renderFrameworkNotes();
+        renderDumbDownCard();
         if (save) saveGame();
       }
 
@@ -1039,6 +1146,7 @@
         renderTopStats();
         renderButtonPosition();
         renderAutonomyEnding();
+        renderDumbDownCard();
       }
       
       function attachEvents() {
@@ -1073,6 +1181,13 @@
       elements.endingReassertBtn.addEventListener('click', reassertControl);
 
       elements.endingPrestigeBtn.addEventListener('click', prestigeFromEnding);
+      
+      if (elements.dumbDownBtn) {
+        elements.dumbDownBtn.addEventListener('click', performDumbDown);
+      }
+
+      elements.layerSummary.textContent =
+        `Meta ${format(state.metaPresses)} • Hyper ${format(state.hyperPresses)} • Derivatives ${format(state.pressDerivatives)} • Larceny ${format(state.larceny)}`;
 
       document.addEventListener('mousemove', (event) => {
         if (state.session.pointerHoldingButton) return;
