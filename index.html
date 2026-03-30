@@ -420,7 +420,7 @@
         "incompatible": [],
         "effects": {
           "passiveMult": 1.6,
-          "liarChance": 0.22,
+          "liarChance": 0.62,
           "costMult": 1.18
         }
       },
@@ -432,7 +432,7 @@
         "incompatible": ["inflation_hedge"],
         "effects": {
           "allowDebt": true,
-          "debtLimit": 2500,
+          "debtLimit": floor(2500 * (regret + 1)),
           "debtBoost": 1.0,
           "passiveMult": 1.12
         }
